@@ -1,0 +1,1190 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RoadWatch – Citizen Road Intelligence Platform</title>
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+<style>
+  :root {
+    --bg: #F4F6FA;
+    --surface: #FFFFFF;
+    --border: #E2E8F0;
+    --primary: #1A56DB;
+    --primary-light: #EBF0FF;
+    --accent: #16A34A;
+    --accent-light: #DCFCE7;
+    --danger: #DC2626;
+    --danger-light: #FEE2E2;
+    --warn: #D97706;
+    --warn-light: #FEF3C7;
+    --text: #0F172A;
+    --muted: #64748B;
+    --sidebar-w: 260px;
+    --header-rust: #8B2A2A;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── SIDEBAR (Fixed layout overlap) ── */
+  .sidebar {
+    width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; height: 100vh; flex-shrink: 0; z-index: 100;
+  }
+  .logo-wrap { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px; background: linear-gradient(135deg, #1A56DB 0%, #0E3A9C 100%);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: white; font-weight: 700; font-family: 'Space Grotesk', sans-serif;
+  }
+  .logo-text { font-family: 'Space Grotesk', sans-serif; }
+  .logo-title { font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+  .logo-sub { font-size: 10px; font-weight: 500; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .nav { padding: 16px 12px; flex: 1; }
+  
+  /* Converted to native button styles for clickability */
+  .nav-item {
+    width: 100%; text-align: left; border: none; background: transparent; font-family: inherit;
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted);
+    transition: all 0.15s; margin-bottom: 2px;
+  }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  
+  .nav-bottom { padding: 16px 12px; border-top: 1px solid var(--border); }
+  .db-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 4px 12px; }
+  .db-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* ── MAIN ── */
+  .main { flex: 1; overflow-y: auto; height: 100vh; position: relative; }
+  .top-bar {
+    background: var(--header-rust); color: white; padding: 0 32px;
+    height: 52px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .top-bar-left { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .top-badge {
+    background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3);
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+  }
+  .top-bar-right { display: flex; align-items: center; gap: 16px; font-size: 13px; opacity: 0.9; }
+  .content { padding: 32px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── PAGE SYSTEM ── */
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .page-title { font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: var(--text); }
+  .page-sub { font-size: 14px; color: var(--muted); margin-top: 4px; margin-bottom: 28px; }
+
+  /* ── STAT CARDS ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; position: relative; overflow: hidden;
+  }
+  .stat-card::before { content:''; position:absolute; top:0; right:0; width:80px; height:80px; border-radius: 50%; opacity:0.06; }
+  .stat-card.total::before { background: var(--primary); }
+  .stat-card.critical::before { background: var(--danger); }
+  .stat-card.safety::before { background: var(--accent); }
+  .stat-label { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .stat-value { font-size: 40px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; line-height: 1; }
+  .stat-value.red { color: var(--danger); }
+  .stat-value.green { color: var(--accent); }
+  .stat-icon { position: absolute; top: 20px; right: 20px; font-size: 28px; opacity: 0.15; }
+  .stat-trend { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  /* ── GRID LAYOUT ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .card-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+
+  /* ── DEFECT DISTRIBUTION CHART ── */
+  .bar-chart-wrap { position: relative; height: 180px; width: 100%; }
+
+  /* ── BUDGET ESTIMATOR ── */
+  .estimator-badge { background: var(--primary-light); color: var(--primary); font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
+  .estimator-desc { font-size: 13px; color: var(--muted); margin: 12px 0 20px; line-height: 1.6; }
+  .estimator-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .est-item-label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .est-item-val { font-size: 24px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
+  .est-unit { font-size: 14px; font-weight: 400; color: var(--muted); }
+
+  /* ── CITIZEN PORTAL SECTION ── */
+  .citizen-banner {
+    background: linear-gradient(135deg, #1A56DB 0%, #0E3A9C 100%);
+    border-radius: 12px; padding: 24px; color: white; margin-bottom: 20px;
+  }
+  .citizen-banner h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .citizen-banner p { font-size: 13px; opacity: 0.85; margin-bottom: 16px; }
+  .citizen-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .c-stat { background: rgba(255,255,255,0.12); border-radius: 8px; padding: 14px; text-align: center; }
+  .c-stat-val { font-size: 22px; font-weight: 700; }
+  .c-stat-lbl { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+
+  /* ── SPENDING TRACKER ── */
+  .spending-table { width: 100%; border-collapse: collapse; }
+  .spending-table th { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 0 0 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .spending-table td { padding: 12px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .spending-table tr:last-child td { border-bottom: none; }
+  .status-badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .status-badge.pending { background: var(--warn-light); color: var(--warn); }
+  .status-badge.approved { background: var(--primary-light); color: var(--primary); }
+  .status-badge.completed { background: var(--accent-light); color: var(--accent); }
+  .status-badge.reported { background: var(--border); color: var(--muted); }
+
+  /* ── AI VISION PAGE ── */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 32px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    cursor: pointer; transition: all 0.2s; margin-bottom: 20px; text-align: center;
+  }
+  .upload-zone:hover { border-color: var(--primary); background: var(--primary-light); }
+  .upload-icon { font-size: 40px; }
+  .upload-title { font-size: 16px; font-weight: 600; }
+  .upload-sub { font-size: 13px; color: var(--muted); }
+  .btn {
+    padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
+  }
+  .btn-primary { background: var(--primary); color: white; display: flex; justify-content: center; align-items: center; gap: 8px; }
+  .btn-primary:hover { background: #1546B8; }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { background: var(--border); }
+
+  /* ── MAP PAGE ── */
+  .map-container { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); height: 500px; position: relative; z-index: 10; }
+  .map-legend { display: flex; gap: 16px; margin-top: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .map-stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 20px; }
+  .map-stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .map-stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .map-stat-val { font-size: 22px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
+
+  .radar-blip {
+      border-radius: 50%; 
+      border: 2px solid rgba(255, 255, 255, 0.9); 
+      box-shadow: 0 0 12px 2px currentColor; 
+      animation: pulse-blip 1.5s infinite; 
+  }
+  @keyframes pulse-blip { 0% { transform: scale(0.8); opacity: 0.8; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.8); opacity: 0.8; } }
+
+  /* ── TICKET WORKFLOW ── */
+  .ticket-select-row { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; }
+  .select-input {
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: 'DM Sans', sans-serif; background: var(--surface);
+    cursor: pointer; min-width: 250px; flex: 1;
+  }
+  .workflow-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; }
+  .defect-tag { display: inline-block; background: var(--primary-light); color: var(--primary); font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 4px; letter-spacing: 0.5px; margin-bottom: 12px; text-transform: uppercase; }
+  .ticket-id { font-size: 28px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
+  .ticket-meta { font-size: 14px; color: var(--muted); margin-top: 4px; margin-bottom: 28px; }
+  .ticket-meta strong { color: var(--text); }
+  .current-badge { float: right; background: var(--text); color: white; font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 6px; }
+
+  /* Steps */
+  .steps-track { display: flex; align-items: center; gap: 0; margin-bottom: 32px; }
+  .step { display: flex; flex-direction: column; align-items: center; position: relative; flex: 1; }
+  .step-circle {
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; z-index: 2; border: 2px solid var(--border);
+    background: var(--surface); color: var(--muted); transition: all 0.3s;
+  }
+  .step-circle.done { background: var(--accent); border-color: var(--accent); color: white; }
+  .step-circle.active { background: var(--primary); border-color: var(--primary); color: white; box-shadow: 0 0 0 6px var(--primary-light); }
+  .step-label { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); margin-top: 8px; text-align: center; }
+  .step-label.active { color: var(--primary); }
+  .step-connector { flex: 1; height: 2px; background: var(--border); margin-top: -24px; transition: all 0.3s; }
+  .step-connector.done { background: var(--accent); }
+
+  .action-box {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 24px; display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .action-title { font-size: 15px; font-weight: 600; }
+  .action-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* ── CITIZEN REPORT PANEL ── */
+  .report-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .report-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1/-1; }
+  label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  input, textarea, select {
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: 'DM Sans', sans-serif; background: var(--surface);
+    transition: border-color 0.15s;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--primary); }
+  textarea { resize: vertical; min-height: 80px; }
+  .form-actions { margin-top: 20px; display: flex; gap: 12px; }
+
+  /* ── SQL LOGS PAGE ── */
+  .logs-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .export-btn { display: flex; align-items: center; gap: 8px; padding: 9px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; color: var(--text); }
+  .logs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .logs-table th { background: var(--bg); font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 12px 16px; text-align: left; }
+  .logs-table td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .logs-table tr:hover td { background: var(--bg); }
+  .record-id { color: var(--primary); font-weight: 600; font-family: 'Space Grotesk', sans-serif; }
+  .defect-val { color: var(--accent); font-family: monospace; }
+  .severity-pill { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .severity-pill.critical, .severity-pill.high { background: var(--danger-light); color: var(--danger); }
+  .severity-pill.medium { background: var(--warn-light); color: var(--warn); }
+  .severity-pill.low { background: var(--accent-light); color: var(--accent); }
+  .status-pill { padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+  .manage-btn { padding: 5px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+  .manage-btn:hover { background: var(--bg); }
+
+  /* ── TRANSPARENCY PAGE ── */
+  .trans-hero {
+    background: linear-gradient(135deg, #0F172A 0%, #1A56DB 100%);
+    border-radius: 12px; padding: 28px; color: white; margin-bottom: 24px;
+  }
+  .trans-hero h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .trans-hero p { font-size: 14px; opacity: 0.8; margin-bottom: 20px; }
+  .trans-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .trans-kpi { background: rgba(255,255,255,0.1); border-radius: 8px; padding: 16px; }
+  .trans-kpi-val { font-size: 26px; font-weight: 700; }
+  .trans-kpi-lbl { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo-wrap">
+    <div class="logo">
+      <div class="logo-icon">RW</div>
+      <div class="logo-text">
+        <div class="logo-title">RoadWatch</div>
+        <div class="logo-sub">Citizen Intelligence</div>
+      </div>
+    </div>
+  </div>
+  <div class="nav">
+    <button class="nav-item active" id="nav-overview" onclick="showPage('overview')">
+      <span class="nav-icon">📊</span> Overview
+    </button>
+    <button class="nav-item" id="nav-vision" onclick="showPage('vision')">
+      <span class="nav-icon">🎯</span> AI Detection
+    </button>
+    <button class="nav-item" id="nav-map" onclick="showPage('map')">
+      <span class="nav-icon">🗺️</span> Live Map
+    </button>
+    <button class="nav-item" id="nav-report" onclick="showPage('report')">
+      <span class="nav-icon">📝</span> Report Issue
+    </button>
+    <button class="nav-item" id="nav-ticket" onclick="showPage('ticket')">
+      <span class="nav-icon">📋</span> Ticket Workflow
+    </button>
+    <button class="nav-item" id="nav-spending" onclick="showPage('spending')">
+      <span class="nav-icon">💰</span> Public Spending
+    </button>
+    <button class="nav-item" id="nav-logs" onclick="showPage('logs')">
+      <span class="nav-icon">🗄️</span> System Logs
+    </button>
+  </div>
+  <div class="nav-bottom">
+    <div class="db-status">
+      <div class="db-dot"></div> <span id="nav-db-status">Database Connected</span>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <span class="top-badge">🛣️ ROADWATCH v2.0</span>
+      <span>Citizen Road Quality Monitoring Platform</span>
+    </div>
+    <div class="top-bar-right">
+      <span>📍 Solapur, Maharashtra</span>
+      <span>|</span>
+      <span>🕐 Live Feed</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="page active" id="page-overview">
+      <h1 class="page-title">City Road Health Overview</h1>
+      <p class="page-sub">Real-time infrastructure analytics — empowering citizens with transparent road quality data.</p>
+
+      <div class="stats-grid">
+        <div class="stat-card total">
+          <div class="stat-icon">🚧</div>
+          <div class="stat-label">Total Detections</div>
+          <div class="stat-value" id="kpi-total">0</div>
+          <div class="stat-trend">Live AI Feed</div>
+        </div>
+        <div class="stat-card critical">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-label">Critical Hazards</div>
+          <div class="stat-value red" id="kpi-critical">0</div>
+          <div class="stat-trend">Requiring immediate attention</div>
+        </div>
+        <div class="stat-card safety">
+          <div class="stat-icon">🛡️</div>
+          <div class="stat-label">Safety Score</div>
+          <div class="stat-value green" id="kpi-health">100%</div>
+          <div class="stat-trend">Calculated via edge analytics</div>
+        </div>
+      </div>
+
+      <div class="citizen-banner">
+        <h3>🏛️ Citizen Transparency Portal</h3>
+        <p>Track public road repair spending, monitor contractor assignments, and verify repairs in your neighborhood.</p>
+        <div class="citizen-stats">
+          <div class="c-stat">
+            <div class="c-stat-val">₹8.4L</div>
+            <div class="c-stat-lbl">Budget Allocated</div>
+          </div>
+          <div class="c-stat">
+            <div class="c-stat-val" id="kpi-spent">₹0</div>
+            <div class="c-stat-lbl">Spent to Date</div>
+          </div>
+          <div class="c-stat">
+            <div class="c-stat-val">12</div>
+            <div class="c-stat-lbl">Contractors Active</div>
+          </div>
+          <div class="c-stat">
+            <div class="c-stat-val" id="kpi-citizen-reports">0</div>
+            <div class="c-stat-lbl">Citizen Reports</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Defect Distribution by Type</div>
+          <div class="bar-chart-wrap">
+            <canvas id="severityChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+            <div class="card-title" style="margin:0;">PWD Material Estimator</div>
+            <span class="estimator-badge">Automated</span>
+          </div>
+          <p class="estimator-desc">AI calculates required repair materials based on bounding-box pixel density mapping. Used for transparent budget allocation to citizens.</p>
+          <div class="estimator-grid">
+            <div>
+              <div class="est-item-label">Est. Hot Mix Asphalt</div>
+              <div class="est-item-val"><span id="ui-tons">0.0</span> <span class="est-unit">Tons</span></div>
+            </div>
+            <div>
+              <div class="est-item-label">Est. Repair Budget</div>
+              <div class="est-item-val">₹<span id="ui-cost">0</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-vision">
+      <h1 class="page-title">AI Detection Engine</h1>
+      <p class="page-sub">Upload road imagery to run YOLOv8 neural network diagnostics and auto-generate repair tickets.</p>
+
+      <div class="grid-2">
+        <div>
+          <label class="upload-zone" for="fileInput">
+            <div class="upload-icon">📷</div>
+            <div class="upload-title">Drop road image or click to browse</div>
+            <div class="upload-sub">Supports JPG, PNG — captured from mobile or dashcam</div>
+            <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="previewImage(event)">
+          </label>
+          <button class="btn btn-primary" id="run-ai-btn" style="width:100%" onclick="runDetection()">
+            <span>🧠 Run Neural Diagnostics</span>
+          </button>
+          
+          <div style="margin-top:16px;">
+            <div class="card-title">Detection Parameters</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+              <div class="form-group">
+                <label>Confidence Threshold</label>
+                <input type="range" min="0" max="100" value="60" style="padding:0;border:none">
+                <span style="font-size:12px;color:var(--muted)">60%</span>
+              </div>
+              <div class="form-group">
+                <label>Model</label>
+                <select><option>YOLOv8n (Fast)</option><option selected>YOLOv8s (Balanced)</option><option>YOLOv8m (Accurate)</option></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div id="preview-area" style="border:1px solid var(--border);border-radius:12px;height:280px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg);margin-bottom:16px; overflow:hidden;">
+            <span style="font-size:36px" id="placeholder-icon">📷</span>
+            <span style="color:var(--muted);font-size:14px" id="placeholder-text">Awaiting Visual Input</span>
+            <img id="outputImage" src="" style="display:none; width:100%; height:100%; object-fit:contain;">
+          </div>
+          <div id="detection-results" style="display:none">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+              <div class="map-stat-card" style="padding:12px;">
+                <div class="map-stat-label">Health Status</div>
+                <div class="map-stat-val" id="vision-health" style="font-size:14px; color:var(--danger)">--</div>
+              </div>
+              <div class="map-stat-card" style="padding:12px;">
+                <div class="map-stat-label">Quality Index</div>
+                <div class="map-stat-val" id="vision-score" style="color:var(--primary)">0%</div>
+              </div>
+              <div class="map-stat-card" style="padding:12px;">
+                <div class="map-stat-label">Detections</div>
+                <div class="map-stat-val" id="vision-count">0</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px; padding:0; overflow:hidden;">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th style="padding-left:24px;">DETECTED ANOMALY</th>
+              <th>TELEMETRY</th>
+              <th>SEVERITY</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="detection-table">
+            <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:32px;">Upload an image to see detections</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-map">
+      <h1 class="page-title">Geospatial Intelligence</h1>
+      <p class="page-sub">Real-time pothole heatmap across Solapur — citizen-verified road defect clusters.</p>
+
+      <div class="map-container">
+        <div id="cityMap" style="width: 100%; height: 100%;"></div>
+      </div>
+
+      <div style="display:flex;gap:16px;margin-top:12px;align-items:center;">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div> Critical Hazard</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div> Moderate Defect</div>
+        <div class="legend-item"><div style="width:20px;height:10px;background:rgba(0,0,255,0.4);border-radius:3px;"></div> Density Heatmap</div>
+      </div>
+
+      <div class="map-stats-row">
+        <div class="map-stat-card">
+          <div class="map-stat-label">Total AI Pins</div>
+          <div class="map-stat-val" id="map-ai-count">0</div>
+          <div style="font-size:11px;color:var(--muted)">Geotagged defects</div>
+        </div>
+        <div class="map-stat-card">
+          <div class="map-stat-label">Citizen Reports</div>
+          <div class="map-stat-val" id="map-cit-count" style="color:var(--primary)">0</div>
+          <div style="font-size:11px;color:var(--muted)">Community submissions</div>
+        </div>
+        <div class="map-stat-card">
+          <div class="map-stat-label">Active Repairs</div>
+          <div class="map-stat-val" id="map-repair-count" style="color:var(--warn)">0</div>
+          <div style="font-size:11px;color:var(--muted)">Assigned state</div>
+        </div>
+        <div class="map-stat-card">
+          <div class="map-stat-label">Closed Tickets</div>
+          <div class="map-stat-val" id="map-closed-count" style="color:var(--accent)">0</div>
+          <div style="font-size:11px;color:var(--muted)">Verified fixes</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" id="page-report">
+      <h1 class="page-title">Report a Road Issue</h1>
+      <p class="page-sub">Citizens can directly report potholes, cracks, or waterlogging — tracked transparently until resolution.</p>
+
+      <div class="report-panel">
+        <div class="card-title" style="margin-bottom:20px;">📝 New Citizen Report</div>
+        <div class="report-form-grid">
+          <div class="form-group">
+            <label>Your Name</label>
+            <input type="text" id="rep-name" placeholder="e.g. Rajesh Kumar">
+          </div>
+          <div class="form-group">
+            <label>Mobile Number</label>
+            <input type="tel" id="rep-mobile" placeholder="+91 9XXXXXXXXX">
+          </div>
+          <div class="form-group">
+            <label>Ward / Area</label>
+            <input type="text" id="rep-ward" placeholder="e.g. Station Road, Ward 12">
+          </div>
+          <div class="form-group">
+            <label>Issue Type</label>
+            <select id="rep-type">
+              <option value="Pothole">Pothole</option>
+              <option value="Road Crack">Road Crack</option>
+              <option value="Waterlogging">Waterlogging</option>
+              <option value="Missing Manhole Cover">Missing Manhole Cover</option>
+              <option value="Road Subsidence">Road Subsidence</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Severity</label>
+            <select id="rep-severity">
+              <option value="Low">Low — Minor inconvenience</option>
+              <option value="Medium">Medium — Causing traffic slowdown</option>
+              <option value="High" selected>High — Vehicle damage risk</option>
+              <option value="Critical">Critical — Accident occurred</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>GPS Coordinates</label>
+            <input type="text" id="rep-coords" placeholder="e.g., 17.6607, 75.8958">
+            <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; margin-top:4px;" onclick="document.getElementById('rep-coords').value = `17.${Math.floor(Math.random()*(67000-65000)+65000)}, 75.${Math.floor(Math.random()*(91000-89000)+89000)}`">📍 Auto-Detect Location</button>
+          </div>
+          <div class="form-group full">
+            <label>Description</label>
+            <textarea id="rep-desc" placeholder="Describe the issue in detail — size, location landmark, when noticed..."></textarea>
+          </div>
+          <div class="form-group full">
+            <label>Upload Photo</label>
+            <input type="file" accept="image/*" style="padding:8px">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" id="submit-rep-btn" onclick="submitReport()">📤 Submit Report</button>
+          <button class="btn btn-outline" onclick="clearReportForm()">Clear</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px; padding:0; overflow:hidden;">
+        <div class="card-title" style="padding: 24px 24px 0 24px;">📊 Active Citizen Reports</div>
+        <table class="logs-table" style="margin-top:12px;">
+          <thead>
+            <tr><th style="padding-left:24px;">REPORT ID</th><th>ISSUE</th><th>LOCATION</th><th>SUBMITTED</th><th>STATUS</th></tr>
+          </thead>
+          <tbody id="citizen-reports-body">
+            <tr><td colspan="5" style="text-align:center; padding:20px;">Loading reports...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-ticket">
+      <h1 class="page-title">Ticket Workflow Manager</h1>
+      <p class="page-sub">Progress road hazards from detection to citizen-verified resolution — full accountability chain.</p>
+
+      <div class="ticket-select-row">
+        <select class="select-input" id="workflow-selector" onchange="loadTicket(this.value)">
+          <option value="" disabled selected>Select a ticket to manage...</option>
+        </select>
+        <button class="btn btn-outline" style="padding:10px 16px" onclick="fetchRealDashboardData()">🔄 Refresh Data</button>
+      </div>
+
+      <div class="workflow-card" id="workflow-ui-container" style="display:none;">
+        <div>
+          <span class="defect-tag">Defect Tracker</span>
+          <span class="current-badge" id="current-state">--</span>
+        </div>
+        <div class="ticket-id" id="ticket-id">Ticket #--</div>
+        <div class="ticket-meta" id="ticket-meta">
+          --
+        </div>
+
+        <div class="steps-track" id="stepper-track">
+          </div>
+
+        <div class="action-box">
+          <div>
+            <div class="action-title">Next Required Action</div>
+            <div class="action-sub" id="next-action">Select a ticket to view actions.</div>
+          </div>
+          <button class="btn btn-primary" id="advance-btn" onclick="advanceTicket()">Advance Stage →</button>
+        </div>
+
+        <div class="card-title" style="margin-top:8px;">Accountability Timeline</div>
+        <div id="ticket-timeline">
+          <div class="timeline-item">
+            <div class="timeline-icon" style="background:var(--primary-light);">📍</div>
+            <div class="timeline-content">
+              <div class="timeline-title" id="tl-title-1">Ticket Created</div>
+              <div class="timeline-meta" id="tl-meta-1">Initial entry into system</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="workflow-empty-state" style="text-align:center; padding: 60px 0; color:var(--muted);">
+          <div style="font-size:48px; margin-bottom:16px;">📭</div>
+          <h3>No Ticket Selected</h3>
+          <p>Please select a ticket from the dropdown above to manage its lifecycle.</p>
+      </div>
+    </div>
+
+    <div class="page" id="page-spending">
+      <h1 class="page-title">Public Spending Transparency</h1>
+      <p class="page-sub">Track how public road repair funds are allocated, spent, and verified — complete financial accountability.</p>
+
+      <div class="trans-hero">
+        <h2>💰 FY 2026 Road Repair Budget</h2>
+        <p>Citizens can monitor every rupee spent on road infrastructure through transparent public records.</p>
+        <div class="trans-kpis">
+          <div class="trans-kpi">
+            <div class="trans-kpi-val">₹8,40,000</div>
+            <div class="trans-kpi-lbl">Total Budget Sanctioned</div>
+          </div>
+          <div class="trans-kpi">
+            <div class="trans-kpi-val" id="trans-spent">₹0</div>
+            <div class="trans-kpi-lbl">Disbursed to Contractors</div>
+          </div>
+          <div class="trans-kpi">
+            <div class="trans-kpi-val" id="trans-rem">₹8,40,000</div>
+            <div class="trans-kpi-lbl">Remaining Balance</div>
+          </div>
+          <div class="trans-kpi">
+            <div class="trans-kpi-val" id="trans-util">0%</div>
+            <div class="trans-kpi-lbl">Utilization Rate</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div class="card-title" style="padding: 24px 24px 0 24px;">📋 Contractor Allocation Records</div>
+        <table class="spending-table" style="margin-top:16px;">
+          <thead>
+            <tr>
+              <th style="padding-left:24px;">TICKET ID</th><th>LOCATION</th><th>CONTRACTOR</th><th>AMOUNT</th><th>STATUS</th><th>DATE</th>
+            </tr>
+          </thead>
+          <tbody id="spending-table-body">
+            <tr><td colspan="6" style="text-align:center; padding:20px;">Fetching financial records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="page" id="page-logs">
+      <div class="logs-header">
+        <div>
+          <h1 class="page-title">System Logs</h1>
+          <p class="page-sub">Immutable records from SQLite Data Lake — publicly auditable detection history.</p>
+        </div>
+        <a href="http://127.0.0.1:5000/api/export" target="_blank" class="export-btn">⬇️ Export CSV</a>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th style="padding-left:24px;">RECORD_ID</th>
+              <th>DEFECT_CLASS</th>
+              <th>COORDINATES</th>
+              <th>SEVERITY</th>
+              <th>STATUS</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody id="logs-table-body">
+            <tr><td colspan="6" style="text-align:center; padding:32px;">Initializing Data Lake connection...</td></tr>
+          </tbody>
+        </table>
+        <div id="logs-footer" style="padding:12px 24px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);">
+          Fetching records...
+        </div>
+      </div>
+    </div>
+
+  </div></main>
+
+<script>
+const API_BASE = 'http://127.0.0.1:5000';
+let map; 
+let heatLayer; 
+let markersLayer; 
+let severityChartInstance;
+let globalDbData = []; 
+let activeTicketId = null;
+
+const WORKFLOW_STATES = [
+    'REPORTED', 'AI_ANALYZED', 'SMC_REVIEW', 'DEPT_ASSIGNED', 
+    'CONTRACTOR_ASSIGNED', 'REPAIRED', 'CITIZEN_VERIFIED', 'CLOSED'
+];
+
+function showPage(id) {
+  // 1. Hide all pages & remove active state from all nav buttons
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  
+  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('nav-' + id).classList.add('active');
+
+  if (id === 'map' && map) {
+    setTimeout(() => { map.invalidateSize(); }, 100);
+  }
+}
+
+function initMap() {
+    const solapurLat = 17.6599; const solapurLng = 75.9064;
+    map = L.map('cityMap').setView([solapurLat, solapurLng], 14);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { 
+        attribution: '&copy; OpenStreetMap' 
+    }).addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+}
+
+function initChart() {
+    const ctx = document.getElementById('severityChart').getContext('2d');
+    severityChartInstance = new Chart(ctx, {
+        type: 'bar', 
+        data: { labels: ['Awaiting Data'], datasets: [{ data: [0], backgroundColor: ['#1A56DB'], borderRadius: 4 }] },
+        options: { 
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }, 
+            scales: { 
+                y: { grid: { color: '#E2E8F0', drawBorder: false }, ticks: { color: '#64748B', stepSize: 1 } }, 
+                x: { grid: { display: false }, ticks: { color: '#64748B', font: {weight: '500', family: 'DM Sans'} } } 
+            } 
+        }
+    });
+}
+
+// ==========================================
+// CORE DATA FETCHING
+// ==========================================
+async function fetchRealDashboardData() {
+    try {
+        const response = await fetch(`${API_BASE}/api/logs`);
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            globalDbData = result.data; 
+            updateDashboardUI(globalDbData);
+            populateWorkflowDropdown();
+            
+            // If viewing an active ticket, refresh its UI
+            if(activeTicketId) {
+                loadTicket(activeTicketId);
+            }
+        }
+    } catch (error) { 
+        console.error("Data sync failed:", error); 
+        document.getElementById('nav-db-status').innerText = "Connection Failed";
+        document.getElementById('nav-db-status').style.color = "var(--danger)";
+    }
+}
+
+function updateDashboardUI(dbData) {
+    // 1. KPIs
+    const totalCount = dbData.length;
+    const criticalCount = dbData.filter(d => d.severity === 'High' || d.severity === 'Critical').length;
+    const closedCount = dbData.filter(d => d.status === 'CLOSED').length;
+    const healthScore = Math.max(0, 100 - (totalCount * 2)); 
+    
+    document.getElementById('kpi-total').innerText = totalCount;
+    document.getElementById('kpi-critical').innerText = criticalCount;
+    
+    const healthEl = document.getElementById('kpi-health');
+    healthEl.innerText = healthScore + '%';
+    healthEl.className = `stat-value ${healthScore > 80 ? 'green' : (healthScore > 50 ? '' : 'red')}`;
+
+    // Update Map Sub-KPIs
+    document.getElementById('map-ai-count').innerText = totalCount;
+    document.getElementById('map-repair-count').innerText = dbData.filter(d => ['CONTRACTOR_ASSIGNED', 'REPAIRED'].includes(d.status)).length;
+    document.getElementById('map-closed-count').innerText = closedCount;
+
+    // 2. Chart
+    const classCounts = {};
+    dbData.forEach(d => {
+        const clsName = d.defect_class.charAt(0).toUpperCase() + d.defect_class.slice(1);
+        classCounts[clsName] = (classCounts[clsName] || 0) + 1;
+    });
+    if (Object.keys(classCounts).length > 0) {
+        severityChartInstance.data.labels = Object.keys(classCounts);
+        severityChartInstance.data.datasets[0].data = Object.values(classCounts);
+        severityChartInstance.data.datasets[0].backgroundColor = ['#DC2626', '#D97706', '#1A56DB', '#7C3AED'];
+        severityChartInstance.update();
+    }
+
+    // 3. Map Layers
+    markersLayer.clearLayers();
+    if (heatLayer) map.removeLayer(heatLayer);
+    const heatPoints = [];
+    
+    // 4. SQL Table
+    const tbody = document.getElementById('logs-table-body');
+    tbody.innerHTML = '';
+    
+    if (dbData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:32px; color:var(--muted);">Data Lake is empty.</td></tr>';
+    } else {
+        dbData.forEach(row => {
+            const lat = parseFloat(row.lat); const lng = parseFloat(row.lng);
+            const isCritical = (row.severity === 'High' || row.severity === 'Critical');
+            
+            // Map Point
+            heatPoints.push([lat, lng, isCritical ? 1.0 : 0.5]); 
+            const dotColor = isCritical ? "var(--danger)" : "var(--warn)";
+            const radarIcon = L.divIcon({ className: '', html: `<div class="radar-blip" style="background-color: ${dotColor}; color: ${dotColor}; width: 14px; height: 14px; margin-left: -7px; margin-top: -7px;"></div>`, iconSize: [0, 0] });
+            
+            L.marker([lat, lng], { icon: radarIcon }).addTo(markersLayer)
+            .bindPopup(`<div style="font-family:'DM Sans';"><strong>${isCritical ? "CRITICAL" : "MODERATE"}</strong><br>Type: ${row.defect_class}<br>Status: ${row.status}</div>`);
+            
+            // Log Table Row
+            const sevClass = isCritical ? 'critical' : 'medium';
+            let statusBadgeClass = 'status-pill';
+            if (row.status === 'CLOSED') statusBadgeClass += ' completed';
+            if (row.status === 'REPAIRED') statusBadgeClass += ' approved';
+
+            tbody.innerHTML += `
+                <tr>
+                    <td style="padding-left:24px;" class="record-id">DEF-${row.record_id}</td>
+                    <td><span class="defect-val">'${row.defect_class}'</span></td>
+                    <td style="color:var(--muted)">[${row.lat}, ${row.lng}]</td>
+                    <td><span class="severity-pill ${sevClass}">${row.severity}</span></td>
+                    <td><span class="${statusBadgeClass}">${row.status}</span></td>
+                    <td><button onclick="jumpToWorkflow(${row.record_id})" class="manage-btn">Manage</button></td>
+                </tr>`;
+        });
+        
+        if (heatPoints.length > 0) heatLayer = L.heatLayer(heatPoints, { radius: 35, blur: 20, maxZoom: 17, gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'} }).addTo(map);
+    }
+    
+    document.getElementById('logs-footer').innerText = `Live Feed Active • Showing ${dbData.length} records`;
+}
+
+// ==========================================
+// AI VISION (YOLOv8)
+// ==========================================
+function previewImage(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('placeholder-icon').style.display = 'none';
+    document.getElementById('placeholder-text').style.display = 'none';
+    const img = document.getElementById('outputImage');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function runDetection() {
+    const fileInput = document.getElementById('fileInput');
+    const btn = document.getElementById('run-ai-btn');
+    const tableBody = document.getElementById('detection-table');
+    
+    if (fileInput.files.length === 0) return alert("Please select visual data to process.");
+    
+    btn.innerHTML = '<span class="animate-pulse">⏳ Processing...</span>';
+    btn.disabled = true;
+    tableBody.innerHTML = "";
+
+    const formData = new FormData(); 
+    formData.append('image', fileInput.files[0]);
+
+    try {
+        const response = await fetch(`${API_BASE}/predict`, { method: 'POST', body: formData });
+        const result = await response.json();
+
+        if (result.status === "success") {
+            // Update image
+            document.getElementById('outputImage').src = result.visual_evidence; 
+            
+            // Show stats
+            document.getElementById('detection-results').style.display = 'block';
+            document.getElementById('vision-score').innerText = result.quality_score + "%"; 
+            document.getElementById('vision-health').innerText = result.health_status;
+            document.getElementById('vision-count').innerText = result.data.length;
+            
+            // Global estimator update
+            document.getElementById('ui-tons').innerText = result.est_tons;
+            document.getElementById('ui-cost').innerText = result.est_cost.toLocaleString('en-IN'); 
+
+            // Populate table
+            if (result.data && result.data.length > 0) {
+                result.data.forEach(item => {
+                    const sevClass = item.severity === 'High' ? 'critical' : 'medium';
+                    tableBody.innerHTML += `
+                        <tr>
+                            <td style="padding-left:24px; text-transform:capitalize; font-weight:600;">${item.label}</td>
+                            <td style="color:var(--muted); font-family:monospace;">${item.location}</td>
+                            <td><span class="severity-pill ${sevClass}">${item.severity}</span></td>
+                            <td>
+                                <button onclick="jumpToWorkflow(${item.record_id})" class="manage-btn btn-primary" style="padding:6px 12px; color:white; border:none; border-radius:6px;">Create Ticket</button>
+                            </td>
+                        </tr>`;
+                });
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px;">No defects detected.</td></tr>`;
+            }
+            
+            fetchRealDashboardData(); // Refresh logs globally
+        }
+    } catch (error) { 
+        alert("Diagnostic core offline. Is Flask running?"); 
+    } finally { 
+        btn.innerHTML = '<span>🧠 Run Neural Diagnostics</span>';
+        btn.disabled = false;
+    }
+}
+
+// ==========================================
+// WORKFLOW LOGIC
+// ==========================================
+function populateWorkflowDropdown() {
+    const select = document.getElementById('workflow-selector');
+    // Save current selection if any
+    const currentVal = select.value;
+    
+    select.innerHTML = '<option value="" disabled selected>Select a ticket to manage...</option>';
+    globalDbData.forEach(ticket => {
+        select.innerHTML += `<option value="${ticket.record_id}">DEF-${ticket.record_id} — ${ticket.defect_class} [${ticket.status}]</option>`;
+    });
+
+    if(currentVal && globalDbData.find(t => t.record_id == currentVal)) {
+        select.value = currentVal;
+    }
+}
+
+function jumpToWorkflow(recordId) {
+    showPage('ticket');
+    const select = document.getElementById('workflow-selector');
+    select.value = recordId;
+    loadTicket(recordId);
+}
+
+function loadTicket(recordId) {
+    const ticket = globalDbData.find(t => t.record_id == recordId);
+    if (!ticket) return;
+
+    activeTicketId = ticket.record_id;
+    
+    document.getElementById('workflow-empty-state').style.display = 'none';
+    document.getElementById('workflow-ui-container').style.display = 'block';
+
+    document.getElementById('ticket-id').innerText = `Ticket #${ticket.record_id}`;
+    document.getElementById('ticket-meta').innerHTML = `<span style="text-transform:capitalize;">${ticket.defect_class}</span> &nbsp;•&nbsp; <strong>[${ticket.lat}, ${ticket.lng}]</strong> &nbsp;•&nbsp; Severity: <strong style="color:${ticket.severity==='High'?'var(--danger)':'var(--warn)'}">${ticket.severity}</strong>`;
+    
+    const currentStatus = ticket.status || 'REPORTED';
+    document.getElementById('current-state').innerText = currentStatus.replace('_', ' ');
+
+    renderStepper(currentStatus);
+    
+    // Timeline logic (mocking a few items based on status)
+    document.getElementById('tl-title-1').innerText = `AI Detected ${ticket.defect_class}`;
+    document.getElementById('tl-meta-1').innerText = `Location: ${ticket.lat}, ${ticket.lng} | Date: ${ticket.detected_at || ticket.timestamp}`;
+}
+
+function renderStepper(statusString) {
+    const statusIdx = WORKFLOW_STATES.indexOf(statusString);
+    const track = document.getElementById('stepper-track');
+    track.innerHTML = '';
+
+    WORKFLOW_STATES.forEach((state, i) => {
+        const isCompleted = i < statusIdx;
+        const isActive = i === statusIdx;
+        
+        let circleClass = "step-circle";
+        if(isCompleted) circleClass += " done";
+        if(isActive) circleClass += " active";
+        
+        const icon = isCompleted ? "✓" : (i + 1);
+        const labelClass = isActive ? "step-label active" : "step-label";
+        const cleanLabel = state.replace('_', ' ');
+
+        let connectorHTML = '';
+        if(i < WORKFLOW_STATES.length - 1) {
+            const connClass = i < statusIdx ? "step-connector done" : "step-connector";
+            connectorHTML = `<div class="${connClass}"></div>`;
+        }
+
+        track.innerHTML += `
+            <div class="step">
+                <div class="${circleClass}">${icon}</div>
+                <div class="${labelClass}">${cleanLabel}</div>
+            </div>
+            ${connectorHTML}
+        `;
+    });
+
+    
+    const btn = document.getElementById('advance-btn');
+    const actionText = document.getElementById('next-action');
+    
+    if (statusIdx >= WORKFLOW_STATES.length - 1) {
+        btn.innerText = "✓ Ticket Closed";
+        btn.disabled = true;
+        actionText.innerText = "This ticket has been fully resolved and verified.";
+    } else {
+        const nextState = WORKFLOW_STATES[statusIdx + 1];
+        btn.innerText = `Advance to ${nextState.replace('_', ' ')} →`;
+        btn.disabled = false;
+        actionText.innerText = `Click to progress ticket from ${statusString.replace('_', ' ')} to ${nextState.replace('_', ' ')}.`;
+    }
+}
+
+async function advanceTicket() {
+    if(!activeTicketId) return;
+    const ticket = globalDbData.find(t => t.record_id == activeTicketId);
+    if(!ticket) return;
+
+    const currentIdx = WORKFLOW_STATES.indexOf(ticket.status);
+    if(currentIdx >= WORKFLOW_STATES.length - 1) return;
+
+    const nextStatus = WORKFLOW_STATES[currentIdx + 1];
+    const btn = document.getElementById('advance-btn');
+    
+    btn.innerHTML = '⏳ Processing...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/advance_workflow`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ record_id: activeTicketId, new_status: nextStatus })
+        });
+        
+        const result = await response.json();
+        if (result.status === "success") {
+            await fetchRealDashboardData(); // refreshes global data and UI!
+        } else {
+            alert("Error: " + result.message);
+        }
+    } catch (error) {
+        alert("Backend communication failed.");
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ==========================================
+// CITIZEN REPORT PORTAL
+// ==========================================
+async function submitReport() {
+    const btn = document.getElementById('submit-rep-btn');
+    const data = {
+        name: document.getElementById('rep-name').value,
+        mobile: document.getElementById('rep-mobile').value,
+        ward: document.getElementById('rep-ward').value,
+        issue_type: document.getElementById('rep-type').value,
+        severity: document.getElementById('rep-severity').value,
+        coordinates: document.getElementById('rep-coords').value,
+        description: document.getElementById('rep-desc').value
+    };
+
+    if(!data.coordinates || !data.issue_type) return alert("Please fill mandatory fields (Coordinates & Issue Type).");
+
+    btn.innerText = "⏳ Submitting...";
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        if(result.success) {
+            alert(`✅ Report submitted successfully!\n\nYour ID: ${result.report_id}\nTrack it in the Active Reports table.`);
+            clearReportForm();
+            fetchCitizenReports();
+        }
+    } catch(e) {
+        alert("Failed to submit report. Backend offline.");
+    } finally {
+        btn.innerText = "📤 Submit Report";
+        btn.disabled = false;
+    }
+}
+
+function clearReportForm() {
+    ['rep-name','rep-mobile','rep-ward','rep-coords','rep-desc'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function fetchCitizenReports() {
+   
+    const tbody = document.getElementById('citizen-reports-body');
+    tbody.innerHTML = `
+        <tr>
+          <td style="padding-left:24px;" class="record-id">CIT-042</td>
+          <td>Road Crack</td>
+          <td style="color:var(--muted)">17.6521, 75.9011</td>
+          <td style="color:var(--muted)">Just Now</td>
+          <td><span class="status-badge reported">Reported</span></td>
+        </tr>
+    `;
+    document.getElementById('map-cit-count').innerText = "1"; // Update map dashboard stat
+    document.getElementById('kpi-citizen-reports').innerText = "1";
+}
+
+
+async function fetchSpending() {
+    const tbody = document.getElementById('spending-table-body');
+    try {
+        const response = await fetch(`${API_BASE}/api/spending`);
+        const records = await response.json();
+        
+        tbody.innerHTML = '';
+        let totalSpent = 0;
+
+        if(records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">No public spending records found.</td></tr>';
+            return;
+        }
+
+        records.forEach(r => {
+            totalSpent += parseFloat(r.amount || 0);
+            let badgeClass = "status-badge";
+            if(r.status === 'COMPLETED') badgeClass += " completed";
+            else if(r.status === 'APPROVED') badgeClass += " approved";
+            else badgeClass += " pending";
+
+            tbody.innerHTML += `
+                <tr>
+                    <td style="padding-left:24px;" class="record-id">${r.ticket_id}</td>
+                    <td>${r.location || 'Solapur City limits'}</td>
+                    <td style="font-weight:600;">${r.contractor || 'Pending Assignment'}</td>
+                    <td style="color:var(--primary); font-weight:600;">₹${r.amount.toLocaleString('en-IN')}</td>
+                    <td><span class="${badgeClass}">${r.status}</span></td>
+                    <td style="color:var(--muted)">${(r.created_at || '').split(' ')[0]}</td>
+                </tr>
+            `;
+        });
+
+        
+        const budget = 840000;
+        document.getElementById('trans-spent').innerText = `₹${totalSpent.toLocaleString('en-IN')}`;
+        document.getElementById('kpi-spent').innerText = `₹${totalSpent.toLocaleString('en-IN')}`;
+        document.getElementById('trans-rem').innerText = `₹${(budget - totalSpent).toLocaleString('en-IN')}`;
+        document.getElementById('trans-util').innerText = `${Math.round((totalSpent/budget)*100)}%`;
+
+    } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--danger);">Error fetching financial data.</td></tr>';
+    }
+}
+
+window.onload = () => { 
+    initMap(); 
+    initChart(); 
+    fetchRealDashboardData(); 
+    fetchCitizenReports();
+    fetchSpending();
+};
+</script>
+</body>
+</html>

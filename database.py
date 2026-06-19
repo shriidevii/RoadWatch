@@ -2,13 +2,24 @@ import sqlite3
 import os
 from datetime import datetime
 
-# The database file seen in your VS Code sidebar
 DB_NAME = 'smc_urbanfix.db'
+
+
+WORKFLOW_STATES = [
+    'REPORTED',
+    'AI_ANALYZED', 
+    'SMC_REVIEW',
+    'DEPT_ASSIGNED',
+    'CONTRACTOR_ASSIGNED',
+    'REPAIRED',
+    'CITIZEN_VERIFIED',
+    'CLOSED'
+]
 
 def get_db_connection():
     """Establish a connection to the SQLite database."""
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row  # Returns dictionary-like rows
+    conn.row_factory = sqlite3.Row  
     return conn
 
 def init_db():
@@ -16,7 +27,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Create the main table for tracking defects
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS infrastructure_defects (
             record_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,9 +50,37 @@ def init_db():
         )
     ''')
     
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS citizen_reports (
+            report_id TEXT PRIMARY KEY,
+            citizen_name TEXT,
+            mobile TEXT,
+            ward TEXT,
+            issue_type TEXT,
+            severity TEXT,
+            coordinates TEXT,
+            description TEXT,
+            status TEXT DEFAULT 'REPORTED',
+            timestamp DATETIME
+        )
+    ''')
+
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS spending_records (
+            ticket_id TEXT PRIMARY KEY,
+            location TEXT,
+            contractor TEXT,
+            amount INTEGER,
+            status TEXT DEFAULT 'PENDING',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     conn.commit()
     conn.close()
-    print(f"[DB INFO] Initialized database '{DB_NAME}' with advanced workflow schema.")
+    print(f"[DB INFO] Initialized database '{DB_NAME}' with advanced workflow schema & transparency tables.")
 
 def insert_defect(defect_class, confidence, lat, lon, severity):
     """
@@ -70,23 +108,15 @@ def update_defect_status(record_id, new_status, **kwargs):
     Moves the defect to the next stage in the workflow.
     Allows updating metadata (like assigned_department) simultaneously.
     """
-    allowed_states = [
-        'REPORTED', 'AI_ANALYZED', 'SMC_REVIEW', 'DEPT_ASSIGNED', 
-        'CONTRACTOR_ASSIGNED', 'REPAIRED', 'CITIZEN_VERIFIED', 'CLOSED'
-    ]
-    
-    if new_status not in allowed_states:
-        raise ValueError(f"Invalid status. Must be one of: {allowed_states}")
+    if new_status not in WORKFLOW_STATES:
+        raise ValueError(f"Invalid status. Must be one of: {WORKFLOW_STATES}")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Base update query
     query = "UPDATE infrastructure_defects SET status = ?"
     params = [new_status]
 
-    # Dynamically add metadata fields if they are passed in kwargs
-    # Example: update_defect_status(1, 'DEPT_ASSIGNED', assigned_department='Water Dept')
     if 'assigned_department' in kwargs:
         query += ", assigned_department = ?"
         params.append(kwargs['assigned_department'])
@@ -118,6 +148,6 @@ def get_all_defects():
     conn.close()
     return [dict(row) for row in rows]
 
-# Run initialization when the script is imported/executed
+
 if __name__ == '__main__':
     init_db()
